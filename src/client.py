@@ -1,9 +1,14 @@
-import socket, struct, zlib
+import socket, struct, zlib, argparse, sys
 from urllib.parse import urlsplit
 import time
 class Client :
-    def __init__(self, msg):
-        self.msg = msg
+    def __init__(self, url:str, save_path : str="llm.model"):
+        self.sock = socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
+        self.hostname, self.port, self.path = self.parse_url(url)
+        self.save_path = save_path
+        self.peer_addr = (self.hostname, self.port)
+        self.sock.connect(self.peer_addr)
+
 
     def parse_url(self, url: str) :
         url_parse = urlsplit(url)
@@ -13,16 +18,6 @@ class Client :
         path = url_parse.path
         return hostname, port, path
 
-    def create_and_send_message(self, server_addr: str, server_port: int):
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-        peer_addr = (server_addr, server_port)
-        sock.connect(peer_addr)
-        
-        data = self.msg.encode("utf-8")
-
-        sock.send(data)
-
-        sock.close()
     
     def encode_packet(self, type:int, window:int, seqnum:int, length:int, timestamp:int, payload=b'') :
         premiere_ligne = (type << 30) | (window << 24) | (length << 11) | seqnum 
@@ -39,10 +34,9 @@ class Client :
         return header # On retourne juste le header si payload est vide
     
 
-    def send_and_receive(self, server_addr: str, server_port: int, timeout: float = 5.0):
-        sock = socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
-        sock.settimeout(timeout) #5.0 ici parce que j'ai envie
-        payload = self.msg.encode("utf-8")
+    def send_and_receive(self, timeout: float = 5.0):
+        self.sock.settimeout(timeout) #5.0 ici parce que j'ai envie
+        payload = self.path.encode("utf-8")
         timestamp = int(time.time()) & 0xFFFFFFFF
 
         paquet= self.encode_packet(
@@ -53,14 +47,11 @@ class Client :
             timestamp=timestamp,
             payload=payload
         )
-        sock.bind(('', 0,0, 0))
-        peer_addr = (server_addr, server_port,0, 0)
-        sock.connect(peer_addr)
-        sock.send(paquet)
+        self.sock.send(paquet)
         print("envoyé")
-        print(f"{self.msg}")
+        print(f"{self.path}")
         try:
-            data= sock.recv(65535)
+            data= self.sock.recv(65535)
             # décode  la réponse
             bits= bin(int(data.hex(), 16))[2:].zfill(len(data) *8)
             length_recu = int(bits[8:21], 2)
@@ -72,11 +63,15 @@ class Client :
         except socket.timeout:
             print("timeout")
         finally:
-            sock.close()
+            self.sock.close()
 
 
 
 
 if __name__ == "__main__" :
-    client = Client("bite")
-    client.send_and_receive("::1", 8080)
+    arg_parse = argparse.ArgumentParser()
+    arg_parse.add_argument("url")
+    arg_parse.add_argument("--save", default="llm.model")
+    args = arg_parse.parse_args()
+    client = Client(args.url, args.save)
+    client.send_and_receive()
