@@ -70,6 +70,19 @@ def encode_packet(type:int, window:int, seqnum:int, length:int, timestamp:int, p
         return packet
     return header # On retourne juste le header si payload est vide
 
+def verify_crc1(data: bytes):
+    header_sansCRC1 = data[:8]
+    crc1_recu =struct.unpack("!I", data[8:12])[0]
+    crc1_calcule = zlib.crc32(header_sansCRC1) & 0xFFFFFFFF
+    return crc1_recu == crc1_calcule
+
+def verify_crc2(payload_bytes: bytes, data: bytes, length: int):
+    crc2_offset = 12 + length
+    if len(data) < crc2_offset + 4:
+        return False
+    crc2_recu = struct.unpack("!I", data[crc2_offset:crc2_offset + 4])[0]
+    crc2_calcule = zlib.crc32(payload_bytes) & 0xFFFFFFFF
+    return crc2_recu == crc2_calcule
 
 def start_server(host: str = "::1", port: int = 8080):
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -79,10 +92,16 @@ def start_server(host: str = "::1", port: int = 8080):
         print(addr)
         print("reçu")
         try:
+            if not verify_crc1(data):
+                print("CRC1 invalide, paquet ignoré")
+                continue
             msg = coupage(data)
             # Décode le payload en texte si ya un message
             if msg.payload:
                 payload_bytes = int(msg.payload, 2).to_bytes(msg.length, byteorder='big')
+                if not verify_crc2(payload_bytes, data, msg.length):
+                    print("CRC2 invalide, payload ignoré")
+                    continue
                 try:
                     texte = payload_bytes.decode("utf-8")
                     print(f"message reçu: {texte}")
