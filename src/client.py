@@ -34,7 +34,7 @@ class Client :
         return header # On retourne juste le header si payload est vide
     
 
-    def send_and_receive(self, timeout: float = 5.0):
+    def send_and_receive(self, timeout: float = 5.0,nmax_send = 3):
         self.sock.settimeout(timeout) #5.0 ici parce que j'ai envie
         payload = self.path.encode("utf-8")
         timestamp = int(time.time()) & 0xFFFFFFFF
@@ -47,23 +47,26 @@ class Client :
             timestamp=timestamp,
             payload=payload
         )
-        self.sock.send(paquet)
-        print("envoyé")
-        print(f"{self.path}")
-        try:
-            data= self.sock.recv(65535)
-            # décode  la réponse
-            bits= bin(int(data.hex(), 16))[2:].zfill(len(data) *8)
-            length_recu = int(bits[8:21], 2)
-            payload_bits =bits[96: 96 +length_recu* 8]
-            if payload_bits:
-                payload_bytes= int(payload_bits, 2).to_bytes(length_recu, byteorder='big')
-                print(f"reçu :'{payload_bytes.decode('utf-8')}'")
-
-        except socket.timeout:
-            print("timeout")
-        finally:
-            self.sock.close()
+        for i in range(nmax_send):
+            #on bloque à trois sinon on envoie des paquets corrompu à l'infini
+            self.sock.send(paquet)
+            print("envoyé")
+            print(f"{self.path}")
+            try:
+                data= self.sock.recv(10000)
+                # décode  la réponse
+                bits= bin(int(data.hex(), 16))[2:].zfill(len(data) *8)
+                length_recu = int(bits[8:21], 2)
+                payload_bits =bits[96: 96 +length_recu* 8]
+                if payload_bits:
+                    payload_bytes= int(payload_bits, 2).to_bytes(length_recu, byteorder='big')
+                    print(f"reçu :'{payload_bytes.decode('utf-8')}'")
+                return
+            except socket.timeout:
+                print(f"Timeout atteint, tentative '{i+1}'")
+            
+       
+        self.sock.close()
 
 
 
