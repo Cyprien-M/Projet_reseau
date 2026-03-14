@@ -131,8 +131,9 @@ class Server:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="::1")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("host")
+    parser.add_argument("port", type=int)
+    parser.add_argument("--root", default=".")
     args = parser.parse_args()
     server = Server(host=args.host, port=args.port)
     server.run()
