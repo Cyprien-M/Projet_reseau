@@ -1,6 +1,10 @@
 import socket, struct, zlib, argparse, sys
 from urllib.parse import urlsplit
 import time
+
+PTYPE_DATA = 1
+PTYPE_ACK = 2
+PTYPE_SACK = 3
 class Client :
     def __init__(self, url:str, save_path : str="llm.model"):
         self.sock = socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
@@ -33,23 +37,21 @@ class Client :
             return packet
         return header # On retourne juste le header si payload est vide
     
+    def send_http(self, path: str) :
+        http = f"GET {path}\r\n"
+        http_encoded = http.encode("ascii")
+        timestamp = int(time.time()) & 0xFFFFFFFF
+        paquet = self.encode_packet(PTYPE_DATA, 1, 0, len(http_encoded), timestamp, http_encoded)
+        self.sock.send(paquet)
+        print(f"request envoyée: GET {self.path}", file=sys.stderr)
 
+    
     def send_and_receive(self, timeout: float = 5.0,nmax_send = 3):
         self.sock.settimeout(timeout) #5.0 ici parce que j'ai envie
-        payload = self.path.encode("utf-8")
-        timestamp = int(time.time()) & 0xFFFFFFFF
-
-        paquet= self.encode_packet(
-            type=1,
-            window= 4,
-            seqnum=0,
-            length=len(payload),
-            timestamp=timestamp,
-            payload=payload
-        )
+        
         for i in range(nmax_send):
             #on bloque à trois sinon on envoie des paquets corrompu à l'infini
-            self.sock.send(paquet)
+            self.send_http(self.path)
             print("envoyé")
             print(f"{self.path}")
             try:
